@@ -1,0 +1,4 @@
+# Optional local-only values for future TURN or Turnstile integration.
+TURN_USERNAME=
+TURN_CREDENTIAL=
+TURNSTILE_SECRET_KEY=

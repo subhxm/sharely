@@ -1,0 +1,44 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sharely",
+  "compatibility_date": "2026-05-23",
+  "main": "./src/worker/index.ts",
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "single-page-application"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SIGNAL_ROOM",
+        "class_name": "SignalRoom"
+      }
+    ]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "ROOM_INDEX",
+      "id": "replace-with-production-kv-id",
+      "preview_id": "replace-with-preview-kv-id"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RELAY_BUCKET",
+      "bucket_name": "sharely-relay",
+      "preview_bucket_name": "sharely-relay-preview"
+    }
+  ],
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "sharely_events"
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SignalRoom"]
+    }
+  ]
+}
