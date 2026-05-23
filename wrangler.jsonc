@@ -22,12 +22,6 @@
 			"remote": true
 		}
 	],
-	"analytics_engine_datasets": [
-		{
-			"binding": "ANALYTICS",
-			"dataset": "sharely_events"
-		}
-	],
 	"migrations": [
 		{
 			"tag": "v1",

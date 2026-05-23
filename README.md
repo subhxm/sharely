@@ -28,7 +28,7 @@ The MVP expects these bindings in `wrangler.jsonc`:
 - `SIGNAL_ROOM`: Durable Object for WebSocket signalling.
 - `ROOM_INDEX`: KV namespace for ephemeral room-code lookup.
 - Optional `RELAY_BUCKET`: R2 bucket for encrypted relay fallback chunks.
-- `ANALYTICS`: Workers Analytics Engine dataset for aggregate, privacy-preserving events.
+- Optional `ANALYTICS`: Workers Analytics Engine dataset for aggregate, privacy-preserving events.
 
 Create the KV namespace before a real deployment:
 
@@ -56,6 +56,19 @@ Then add this binding to `wrangler.jsonc`:
 ```
 
 If R2 is not enabled, leave the binding out. Direct P2P transfer still works; `/api/relay/*` returns a clear `501` until R2 is configured.
+
+Analytics Engine is optional for the first deployment. If your Cloudflare account has Analytics Engine enabled, add this binding to `wrangler.jsonc`:
+
+```json
+"analytics_engine_datasets": [
+  {
+    "binding": "ANALYTICS",
+    "dataset": "sharely_events"
+  }
+]
+```
+
+If Analytics Engine is not enabled, leave the binding out. The Worker skips event writes automatically.
 
 ## GitHub Actions Deployment
 
@@ -93,11 +106,13 @@ Use an API token rather than the legacy global API key. The token should include
 
 3. Optional: enable R2 in the Cloudflare Dashboard, create `sharely-relay`, and add the `RELAY_BUCKET` binding shown above.
 
-4. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub repository secrets.
+4. Optional: enable Analytics Engine in the Cloudflare Dashboard and add the `ANALYTICS` binding shown above.
 
-5. Push to `main` or `master`, or run `Cloudflare Worker Deploy` manually from GitHub Actions.
+5. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub repository secrets.
 
-6. Open the workflow run summary. The preview job shows build size and dry-run logs; the deploy job shows the deployment URL and final Wrangler log tail.
+6. Push to `main` or `master`, or run `Cloudflare Worker Deploy` manually from GitHub Actions.
+
+7. Open the workflow run summary. The preview job shows build size and dry-run logs; the deploy job shows the deployment URL and final Wrangler log tail.
 
 ## Privacy Notes
 
