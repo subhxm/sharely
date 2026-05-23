@@ -1,0 +1,168 @@
+name: Cloudflare Worker Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: cloudflare-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: read
+
+env:
+  CLOUDFLARE_CF_FETCH_ENABLED: "false"
+  NODE_VERSION: "22"
+
+jobs:
+  validate:
+    name: Build And Preview
+    runs-on: ubuntu-latest
+    outputs:
+      package_size: ${{ steps.preview.outputs.package_size }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Typecheck And Build
+        run: |
+          echo "::group::TypeScript + Vite build"
+          npm run build
+          echo "::endgroup::"
+
+      - name: Unit Tests
+        run: |
+          echo "::group::Vitest"
+          npm test
+          echo "::endgroup::"
+
+      - name: Wrangler Deployment Preview
+        id: preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          echo "::group::Wrangler dry-run preview"
+          npx wrangler deploy --dry-run 2>&1 | tee wrangler-preview.log
+          echo "::endgroup::"
+
+          if [ -d dist/client ]; then
+            CLIENT_SIZE="$(du -sh dist/client | awk '{print $1}')"
+          else
+            CLIENT_SIZE="missing"
+          fi
+
+          echo "package_size=${CLIENT_SIZE}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Sharely Deployment Preview"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Workflow | \`${GITHUB_WORKFLOW}\` |"
+            echo "| Ref | \`${GITHUB_REF_NAME}\` |"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Client bundle | \`${CLIENT_SIZE}\` |"
+            echo "| Wrangler mode | \`dry-run\` |"
+            echo ""
+            echo "### Preview Log Tail"
+            echo '```text'
+            tail -n 80 wrangler-preview.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Preview Logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-preview-logs
+          path: wrangler-preview.log
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy To Cloudflare
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name != 'pull_request'
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.deployment_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Release
+        run: |
+          echo "::group::Production build"
+          npm run build
+          echo "::endgroup::"
+
+      - name: Deploy Worker
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          echo "::group::Wrangler deploy"
+          npx wrangler deploy 2>&1 | tee wrangler-deploy.log
+          echo "::endgroup::"
+
+          DEPLOYMENT_URL="$(grep -Eo 'https://[^ ]+workers.dev[^ ]*|https://[^ ]+\\.pages\\.dev[^ ]*|https://[^ ]+' wrangler-deploy.log | tail -n 1 || true)"
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            DEPLOYMENT_URL="https://dash.cloudflare.com/${CLOUDFLARE_ACCOUNT_ID}/workers/services/view/sharely/production"
+          fi
+          echo "deployment_url=${DEPLOYMENT_URL}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Sharely Production Deployment"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Status | Deployed |"
+            echo "| Worker | \`sharely\` |"
+            echo "| Ref | \`${GITHUB_REF_NAME}\` |"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Build artifact | \`${{ needs.validate.outputs.package_size }}\` |"
+            echo "| Deployment URL | ${DEPLOYMENT_URL} |"
+            echo ""
+            echo "### Deployment Log Tail"
+            echo '```text'
+            tail -n 100 wrangler-deploy.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Deployment Logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-deployment-logs
+          path: wrangler-deploy.log
+          if-no-files-found: error

@@ -82,6 +82,15 @@ app.get("/api/rooms/:code/socket", async (c) => {
 });
 
 app.post("/api/relay/upload", async (c) => {
+  if (!c.env.RELAY_BUCKET) {
+    return c.json(
+      {
+        error: "Relay fallback is not enabled for this deployment. Enable R2 and add RELAY_BUCKET to wrangler.jsonc."
+      },
+      501
+    );
+  }
+
   const roomCode = normalizeRoomCode(c.req.query("room") ?? "");
   if (!isRoomCode(roomCode)) return c.json({ error: "Invalid room" }, 400);
   if (!c.req.header("X-Sharely-Encrypted")) {
@@ -99,6 +108,15 @@ app.post("/api/relay/upload", async (c) => {
 });
 
 app.get("/api/relay/*", async (c) => {
+  if (!c.env.RELAY_BUCKET) {
+    return c.json(
+      {
+        error: "Relay fallback is not enabled for this deployment. Enable R2 and add RELAY_BUCKET to wrangler.jsonc."
+      },
+      501
+    );
+  }
+
   const object = await c.env.RELAY_BUCKET.get(c.req.path.replace("/api/relay/", ""));
   if (!object) return c.text("Not found", 404);
   return new Response(object.body, {
