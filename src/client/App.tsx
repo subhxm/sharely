@@ -44,10 +44,10 @@ export function App() {
   const [history, setHistory] = useState<LocalTransfer[]>([]);
   const [copied, setCopied] = useState(false);
   const roleRef = useRef<PeerRole>("sender");
-  const signalingRef = useRef<SignalingSession>();
-  const peerRef = useRef<PeerRuntime>();
-  const transferRef = useRef<TransferRuntime>();
-  const remotePeerRef = useRef<SignalPeer>();
+  const signalingRef = useRef<SignalingSession | null>(null);
+  const peerRef = useRef<PeerRuntime | null>(null);
+  const transferRef = useRef<TransferRuntime | null>(null);
+  const remotePeerRef = useRef<SignalPeer | null>(null);
   const filesRef = useRef<File[]>([]);
   const routeStartedRef = useRef(false);
 

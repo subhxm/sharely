@@ -26,20 +26,32 @@ export interface RelayUploadResponse {
   expiresAt: number;
 }
 
+export interface SerializableSessionDescription {
+  type: "answer" | "offer" | "pranswer" | "rollback";
+  sdp?: string;
+}
+
+export interface SerializableIceCandidate {
+  candidate?: string;
+  sdpMLineIndex?: number | null;
+  sdpMid?: string | null;
+  usernameFragment?: string | null;
+}
+
 export type SignalClientMessage =
   | { type: "join"; roomCode: string; peerId: string; publicKey: string; role: PeerRole }
-  | { type: "offer"; from: string; to: string; sdp: RTCSessionDescriptionInit }
-  | { type: "answer"; from: string; to: string; sdp: RTCSessionDescriptionInit }
-  | { type: "ice-candidate"; from: string; to: string; candidate: RTCIceCandidateInit }
+  | { type: "offer"; from: string; to: string; sdp: SerializableSessionDescription }
+  | { type: "answer"; from: string; to: string; sdp: SerializableSessionDescription }
+  | { type: "ice-candidate"; from: string; to: string; candidate: SerializableIceCandidate }
   | { type: "ping"; at: number };
 
 export type SignalServerMessage =
   | { type: "joined"; roomCode: string; peerId: string; peers: SignalPeer[] }
   | { type: "peer-joined"; peer: SignalPeer }
   | { type: "peer-left"; peerId: string }
-  | { type: "offer"; from: string; sdp: RTCSessionDescriptionInit }
-  | { type: "answer"; from: string; sdp: RTCSessionDescriptionInit }
-  | { type: "ice-candidate"; from: string; candidate: RTCIceCandidateInit }
+  | { type: "offer"; from: string; sdp: SerializableSessionDescription }
+  | { type: "answer"; from: string; sdp: SerializableSessionDescription }
+  | { type: "ice-candidate"; from: string; candidate: SerializableIceCandidate }
   | { type: "pong"; at: number }
   | { type: "error"; code: string; message: string };
 

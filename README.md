@@ -5,9 +5,11 @@ Sharely is a Cloudflare-first, no-account, browser-to-browser file transfer app.
 ## Quick Start
 
 ```bash
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
+
+The scripts also work with `pnpm` if you prefer it.
 
 Open `http://localhost:5173`, create a room in one tab, and join the displayed `/r/{roomCode}` link from another tab or browser.
 

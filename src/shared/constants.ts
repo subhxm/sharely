@@ -6,7 +6,13 @@ export const DATA_CHANNEL_LABEL = "sharely-files";
 export const PROTOCOL_VERSION = 1;
 export const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-export const ICE_SERVERS: RTCIceServer[] = [
+export interface IceServerConfig {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+export const ICE_SERVERS: IceServerConfig[] = [
   { urls: "stun:stun.cloudflare.com:3478" },
   { urls: "stun:stun.l.google.com:19302" }
 ];
