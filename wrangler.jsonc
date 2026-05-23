@@ -31,4 +31,11 @@
 			]
 		}
 	]
+,
+    "observability": {
+        "logs": {
+            "enabled": true,
+            "invocation_logs": true
+        }
+    }
 }
