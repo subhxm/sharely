@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { ROOM_TTL_SECONDS } from "../shared/constants";
-import type { CreateRoomResponse, RelayUploadResponse, RoomRecord, ValidateRoomResponse } from "../shared/protocol";
+import type { CreateRoomResponse, RoomRecord, ValidateRoomResponse } from "../shared/protocol";
 import { generateRoomCode, isRoomCode, makeToken, normalizeRoomCode } from "../shared/room";
 import { SignalRoom } from "./signal-room";
 import type { Env } from "./types";
@@ -28,7 +28,6 @@ app.post("/api/rooms", async (c) => {
   };
 
   await c.env.ROOM_INDEX.put(roomCode, JSON.stringify(record), { expirationTtl: ROOM_TTL_SECONDS });
-  writeEvent(c.env, "room_created", roomCode);
 
   const url = new URL(c.req.url);
   const response: CreateRoomResponse = {
@@ -68,7 +67,6 @@ app.delete("/api/rooms/:code", async (c) => {
   }
 
   await c.env.ROOM_INDEX.delete(roomCode);
-  writeEvent(c.env, "room_deleted", roomCode);
   return c.json({ ok: true });
 });
 
@@ -81,55 +79,9 @@ app.get("/api/rooms/:code/socket", async (c) => {
   return c.env.SIGNAL_ROOM.get(id).fetch(c.req.raw);
 });
 
-app.post("/api/relay/upload", async (c) => {
-  if (!c.env.RELAY_BUCKET) {
-    return c.json(
-      {
-        error: "Relay fallback is not enabled for this deployment. Enable R2 and add RELAY_BUCKET to wrangler.jsonc."
-      },
-      501
-    );
-  }
-
-  const roomCode = normalizeRoomCode(c.req.query("room") ?? "");
-  if (!isRoomCode(roomCode)) return c.json({ error: "Invalid room" }, 400);
-  if (!c.req.header("X-Sharely-Encrypted")) {
-    return c.json({ error: "Relay chunks must be encrypted client-side" }, 400);
-  }
-
-  const body = await c.req.arrayBuffer();
-  const objectKey = `${roomCode}/${crypto.randomUUID()}.bin`;
-  const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
-  await c.env.RELAY_BUCKET.put(objectKey, body, {
-    customMetadata: { roomCode, encrypted: "true", expiresAt: String(expiresAt) }
-  });
-  writeEvent(c.env, "relay_uploaded", roomCode);
-  return c.json({ objectKey, expiresAt } satisfies RelayUploadResponse, 201);
-});
-
-app.get("/api/relay/*", async (c) => {
-  if (!c.env.RELAY_BUCKET) {
-    return c.json(
-      {
-        error: "Relay fallback is not enabled for this deployment. Enable R2 and add RELAY_BUCKET to wrangler.jsonc."
-      },
-      501
-    );
-  }
-
-  const object = await c.env.RELAY_BUCKET.get(c.req.path.replace("/api/relay/", ""));
-  if (!object) return c.text("Not found", 404);
-  return new Response(object.body, {
-    headers: {
-      "Content-Type": object.httpMetadata?.contentType ?? "application/octet-stream",
-      "Cache-Control": "no-store"
-    }
-  });
-});
-
 app.get("*", async (c) => {
   if (c.env.ASSETS) return c.env.ASSETS.fetch(c.req.raw);
-  return c.text("Sharely worker is running. Build assets for the web app.", 200);
+  return c.text("Sharely static assets are not bound. Check wrangler.jsonc assets.binding.", 500);
 });
 
 export default app;
@@ -156,12 +108,4 @@ async function getRoom(env: Env, roomCode: string): Promise<RoomRecord | null> {
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function writeEvent(env: Env, event: string, roomCode: string): void {
-  env.ANALYTICS?.writeDataPoint({
-    blobs: [event, roomCode],
-    doubles: [Date.now()],
-    indexes: [roomCode]
-  });
 }

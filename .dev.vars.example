@@ -1,4 +1,2 @@
-# Optional local-only values for future TURN or Turnstile integration.
-TURN_USERNAME=
-TURN_CREDENTIAL=
-TURNSTILE_SECRET_KEY=
+# This MVP is configured for the Cloudflare free tier.
+# No paid R2, Analytics Engine, TURN, or Turnstile secrets are required.

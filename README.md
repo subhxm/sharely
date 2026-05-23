@@ -1,6 +1,28 @@
 # Sharely
 
-Sharely is a Cloudflare-first, no-account, browser-to-browser file transfer app. This repository contains the Phase 1 MVP foundation from `sharely-prd.md`: React UI, Worker room APIs, Durable Object WebSocket signalling, WebRTC DataChannel transfer, application-layer chunk encryption, and local-only transfer history.
+Sharely is a free-tier-friendly, no-account, browser-to-browser file transfer and chat app. This repository contains the Phase 1 MVP foundation from `sharely-prd.md`: React UI, Worker room APIs, Durable Object WebSocket signalling, WebRTC DataChannel transfer, application-layer chunk encryption, P2P room chat, smart local transfer drafts, and local-only transfer history.
+
+## Free-Tier Stack
+
+Sharely is currently configured to deploy without paid Cloudflare add-ons:
+
+- Cloudflare Worker for API routes and static asset serving.
+- Worker static assets for the React app.
+- Durable Object `SIGNAL_ROOM` for WebSocket signalling.
+- KV namespace `ROOM_INDEX` for ephemeral room-code lookup.
+- Browser WebRTC direct P2P for file bytes.
+- Browser WebRTC direct P2P for room chat messages.
+- Local smart drafts for transfer handoff notes.
+- Browser IndexedDB for local-only transfer history.
+
+Not used in this free deployment:
+
+- R2
+- Analytics Engine
+- Cloudflare Realtime TURN
+- Turnstile
+- Workers AI
+- D1
 
 ## Quick Start
 
@@ -8,8 +30,6 @@ Sharely is a Cloudflare-first, no-account, browser-to-browser file transfer app.
 npm install
 npm run dev
 ```
-
-The scripts also work with `pnpm` if you prefer it.
 
 Open `http://localhost:5173`, create a room in one tab, and join the displayed `/r/{roomCode}` link from another tab or browser.
 
@@ -23,52 +43,21 @@ Open `http://localhost:5173`, create a room in one tab, and join the displayed `
 
 ## Cloudflare Bindings
 
-The MVP expects these bindings in `wrangler.jsonc`:
+The free MVP expects only these bindings in `wrangler.jsonc`:
 
 - `SIGNAL_ROOM`: Durable Object for WebSocket signalling.
 - `ROOM_INDEX`: KV namespace for ephemeral room-code lookup.
-- Optional `RELAY_BUCKET`: R2 bucket for encrypted relay fallback chunks.
-- Optional `ANALYTICS`: Workers Analytics Engine dataset for aggregate, privacy-preserving events.
+- `ASSETS`: Worker static assets binding for the React app.
 
-Create the KV namespace before a real deployment:
+Create the KV namespace once:
 
 ```bash
-wrangler kv namespace create ROOM_INDEX
+npx wrangler kv namespace create ROOM_INDEX
 ```
 
 Copy the returned `id` into the `ROOM_INDEX` binding in `wrangler.jsonc`.
 
-R2 relay fallback is optional for the first deployment. If your Cloudflare account has R2 enabled, create the relay bucket:
-
-```bash
-wrangler r2 bucket create sharely-relay
-```
-
-Then add this binding to `wrangler.jsonc`:
-
-```json
-"r2_buckets": [
-  {
-    "binding": "RELAY_BUCKET",
-    "bucket_name": "sharely-relay"
-  }
-]
-```
-
-If R2 is not enabled, leave the binding out. Direct P2P transfer still works; `/api/relay/*` returns a clear `501` until R2 is configured.
-
-Analytics Engine is optional for the first deployment. If your Cloudflare account has Analytics Engine enabled, add this binding to `wrangler.jsonc`:
-
-```json
-"analytics_engine_datasets": [
-  {
-    "binding": "ANALYTICS",
-    "dataset": "sharely_events"
-  }
-]
-```
-
-If Analytics Engine is not enabled, leave the binding out. The Worker skips event writes automatically.
+Durable Object migrations are already declared in `wrangler.jsonc`.
 
 ## GitHub Actions Deployment
 
@@ -84,14 +73,14 @@ The repository includes [`.github/workflows/cloudflare-worker.yml`](.github/work
 
 Add these in GitHub under `Settings -> Secrets and variables -> Actions -> New repository secret`:
 
-- `CLOUDFLARE_API_TOKEN`: Cloudflare API token for deployment.
-- `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare account ID.
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
 
-Use an API token rather than the legacy global API key. The token should include permissions for Workers Scripts, Workers Routes if you add routes later, Workers KV Storage, R2, and Account Analytics.
+The API token needs permission to deploy Workers and access the KV namespace used by the Worker.
 
 ### Deployment Steps
 
-1. Create Cloudflare resources:
+1. Create the KV namespace if it does not already exist:
 
    ```bash
    npx wrangler kv namespace create ROOM_INDEX
@@ -104,19 +93,26 @@ Use an API token rather than the legacy global API key. The token should include
    "id": "your-kv-namespace-id"
    ```
 
-3. Optional: enable R2 in the Cloudflare Dashboard, create `sharely-relay`, and add the `RELAY_BUCKET` binding shown above.
+3. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub repository secrets.
 
-4. Optional: enable Analytics Engine in the Cloudflare Dashboard and add the `ANALYTICS` binding shown above.
+4. Push to `main` or `master`, or run `Cloudflare Worker Deploy` manually from GitHub Actions.
 
-5. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub repository secrets.
+5. Open the workflow run summary. The preview job shows build size and dry-run logs; the deploy job shows the deployment URL and final Wrangler log tail.
 
-6. Push to `main` or `master`, or run `Cloudflare Worker Deploy` manually from GitHub Actions.
+## Free-Tier Limitations
 
-7. Open the workflow run summary. The preview job shows build size and dry-run logs; the deploy job shows the deployment URL and final Wrangler log tail.
+- No server relay fallback: peers must connect directly over WebRTC/STUN.
+- Strict corporate NATs or locked-down networks may fail without TURN.
+- No server-side analytics; use local browser logs and Cloudflare's built-in Worker logs.
+- No bot challenge on room creation.
+- Smart drafts are local metadata-based helpers, not cloud AI generation.
+
+That tradeoff keeps the MVP deployable without enabling paid Cloudflare services.
 
 ## Privacy Notes
 
 - Direct file bytes move over WebRTC DataChannel, not through the Worker.
-- Relay upload requires `X-Sharely-Encrypted` and is intended only for encrypted chunks.
+- Chat messages move over the same encrypted WebRTC DataChannel, not through the Worker.
+- The Worker only handles room creation, room lookup, and WebSocket signalling.
 - Transfer history stays in browser IndexedDB.
-- Analytics events must never include file names, content, exact IPs, messages, or persistent user identifiers.
+- File names and file content are never stored by Sharely servers.

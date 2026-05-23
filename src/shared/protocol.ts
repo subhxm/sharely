@@ -21,11 +21,6 @@ export interface ValidateRoomResponse {
   ttl: number;
 }
 
-export interface RelayUploadResponse {
-  objectKey: string;
-  expiresAt: number;
-}
-
 export interface SerializableSessionDescription {
   type: "answer" | "offer" | "pranswer" | "rollback";
   sdp?: string;
@@ -78,7 +73,15 @@ export type TransferControl =
   | { type: "file-cancel"; fileId: string }
   | { type: "ack"; fileId: string; chunkIndex: number }
   | { type: "transfer-paused"; fileId: string }
-  | { type: "transfer-resumed"; fileId: string };
+  | { type: "transfer-resumed"; fileId: string }
+  | { type: "chat-message"; id: string; body: string; sentAt: number };
+
+export interface ChatMessage {
+  id: string;
+  body: string;
+  sentAt: number;
+  direction: "sent" | "received" | "system";
+}
 
 export interface LocalTransfer {
   id: string;

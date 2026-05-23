@@ -1,5 +1,5 @@
 import { CHUNK_SIZE_BYTES } from "../../shared/constants";
-import type { TransferControl } from "../../shared/protocol";
+import type { ChatMessage, TransferControl } from "../../shared/protocol";
 import { decryptChunk, encryptChunk, sha256Hex } from "./crypto";
 
 export interface TransferProgress {
@@ -18,11 +18,13 @@ export interface TransferRuntime {
   resume(): void;
   cancel(): void;
   sendFiles(files: File[]): Promise<void>;
+  sendChatMessage(body: string): ChatMessage;
   handleMessage(data: string | ArrayBuffer): Promise<void>;
 }
 
 type ProgressHandler = (progress: TransferProgress) => void;
 type DownloadHandler = (file: Blob, name: string, hash: string) => void;
+type ChatHandler = (message: ChatMessage) => void;
 
 interface IncomingFile {
   meta: Extract<TransferControl, { type: "file-offer" }>;
@@ -35,7 +37,8 @@ export function createTransferRuntime(
   channel: RTCDataChannel,
   aesKey: CryptoKey,
   onProgress: ProgressHandler,
-  onDownload: DownloadHandler
+  onDownload: DownloadHandler,
+  onChatMessage: ChatHandler
 ): TransferRuntime {
   let paused = false;
   let cancelled = false;
@@ -94,6 +97,15 @@ export function createTransferRuntime(
   async function handleMessage(data: string | ArrayBuffer): Promise<void> {
     if (typeof data === "string") {
       const message = JSON.parse(data) as TransferControl;
+      if (message.type === "chat-message") {
+        onChatMessage({
+          id: message.id,
+          body: message.body,
+          sentAt: message.sentAt,
+          direction: "received"
+        });
+        return;
+      }
       if (message.type === "file-offer") {
         incoming.set(message.fileId, {
           meta: message,
@@ -164,6 +176,16 @@ export function createTransferRuntime(
     },
     cancel() {
       cancelled = true;
+    },
+    sendChatMessage(body: string) {
+      const message: ChatMessage = {
+        id: crypto.randomUUID(),
+        body,
+        sentAt: Date.now(),
+        direction: "sent"
+      };
+      sendControl({ type: "chat-message", id: message.id, body: message.body, sentAt: message.sentAt });
+      return message;
     },
     sendFiles,
     handleMessage

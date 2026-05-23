@@ -4,11 +4,14 @@ import {
   Download,
   FilePlus2,
   Link as LinkIcon,
+  MessageCircle,
   Pause,
   Play,
   QrCode,
   RotateCcw,
   ShieldCheck,
+  Send,
+  Sparkles,
   Upload,
   X
 } from "lucide-react";
@@ -20,7 +23,7 @@ import { createTransferRuntime, type TransferProgress, type TransferRuntime } fr
 import { addTransfer, listTransfers } from "./lib/history";
 import { connectSignaling, type SignalingSession } from "./lib/signaling";
 import { createPeerRuntime, handleSignal, type PeerRuntime } from "./lib/webrtc";
-import type { LocalTransfer, PeerRole, SignalPeer, SignalServerMessage } from "../shared/protocol";
+import type { ChatMessage, LocalTransfer, PeerRole, SignalPeer, SignalServerMessage } from "../shared/protocol";
 import { isRoomCode, normalizeRoomCode } from "../shared/room";
 
 type AppMode = "home" | "send" | "receive";
@@ -42,6 +45,9 @@ export function App() {
   const [progress, setProgress] = useState<TransferProgress | undefined>();
   const [fingerprint, setFingerprint] = useState("");
   const [history, setHistory] = useState<LocalTransfer[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [channelReady, setChannelReady] = useState(false);
   const [copied, setCopied] = useState(false);
   const roleRef = useRef<PeerRole>("sender");
   const signalingRef = useRef<SignalingSession | null>(null);
@@ -144,8 +150,11 @@ export function App() {
         (channel, session) => {
           setFingerprint(session.fingerprint);
           setStatus("Secure channel ready");
-          const transfer = createTransferRuntime(channel, session.aesKey, setProgress, saveDownload);
+          const transfer = createTransferRuntime(channel, session.aesKey, setProgress, saveDownload, (message) => {
+            setMessages((current) => [...current, message]);
+          });
           transferRef.current = transfer;
+          setChannelReady(true);
           channel.onmessage = (event) => void transfer.handleMessage(event.data as string | ArrayBuffer);
           if (role === "sender" && filesRef.current.length > 0) void transfer.sendFiles(filesRef.current);
         },
@@ -164,6 +173,19 @@ export function App() {
     filesRef.current = nextFiles;
     setFiles(nextFiles);
     if (transferRef.current && nextFiles.length > 0) await transferRef.current.sendFiles(nextFiles);
+  }
+
+  function sendChatMessage() {
+    const body = chatDraft.trim();
+    if (!body || !transferRef.current) return;
+    const message = transferRef.current.sendChatMessage(body);
+    setMessages((current) => [...current, message]);
+    setChatDraft("");
+  }
+
+  function generateSmartDraft() {
+    const draft = buildSmartDraft(filesRef.current, progress, mode);
+    setChatDraft(draft);
   }
 
   async function saveDownload(blob: Blob, name: string, hash: string) {
@@ -215,6 +237,10 @@ export function App() {
     if (roomCode && roomToken) void deleteRoom(roomCode, roomToken);
     signalingRef.current?.close();
     peerRef.current?.connection.close();
+    signalingRef.current = null;
+    peerRef.current = null;
+    transferRef.current = null;
+    remotePeerRef.current = null;
     setMode("home");
     setRoomCode("");
     setRoomToken("");
@@ -223,6 +249,9 @@ export function App() {
     filesRef.current = [];
     setFiles([]);
     setProgress(undefined);
+    setMessages([]);
+    setChatDraft("");
+    setChannelReady(false);
     setFingerprint("");
     setStatus("Ready");
     setError("");
@@ -332,6 +361,14 @@ export function App() {
                 onResume={() => transferRef.current?.resume()}
                 onCancel={() => transferRef.current?.cancel()}
               />
+              <ChatPanel
+                messages={messages}
+                draft={chatDraft}
+                channelReady={channelReady}
+                onDraftChange={setChatDraft}
+                onSend={sendChatMessage}
+                onSmartDraft={generateSmartDraft}
+              />
               <HistoryList history={history} compact />
             </section>
           </div>
@@ -345,6 +382,24 @@ export function App() {
       </section>
     </main>
   );
+}
+
+function buildSmartDraft(files: File[], progress: TransferProgress | undefined, mode: AppMode): string {
+  if (files.length > 0) {
+    const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+    const names = files
+      .slice(0, 3)
+      .map((file) => file.name)
+      .join(", ");
+    const more = files.length > 3 ? ` and ${files.length - 3} more` : "";
+    return `Sharing ${files.length} file${files.length === 1 ? "" : "s"} (${formatBytes(totalBytes)}): ${names}${more}. Please confirm once the download finishes.`;
+  }
+
+  if (progress) {
+    return `I am ${mode === "send" ? "sending" : "receiving"} ${progress.fileName}. Current status: ${progress.state}.`;
+  }
+
+  return "I am connected in this private Sharely room. Send a note here while the file transfer is running.";
 }
 
 function Header({ status }: { status: string }) {
@@ -412,6 +467,76 @@ function TransferPanel({
           </button>
           <button className="mini-action bg-coral" onClick={onCancel}>
             <X aria-hidden /> Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatPanel({
+  messages,
+  draft,
+  channelReady,
+  onDraftChange,
+  onSend,
+  onSmartDraft
+}: {
+  messages: ChatMessage[];
+  draft: string;
+  channelReady: boolean;
+  onDraftChange(value: string): void;
+  onSend(): void;
+  onSmartDraft(): void;
+}) {
+  return (
+    <div className="mt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="label flex items-center gap-2">
+          <MessageCircle className="h-4 w-4" aria-hidden /> P2P chat
+        </p>
+        <button className="mini-action bg-sky" onClick={onSmartDraft} type="button">
+          <Sparkles aria-hidden /> Smart draft
+        </button>
+      </div>
+      <div className="mt-3 flex h-64 flex-col border-4 border-ink bg-paper">
+        <div className="flex-1 space-y-2 overflow-y-auto p-3" role="log" aria-live="polite">
+          {messages.length === 0 && (
+            <p className="border-4 border-ink bg-white p-3 text-sm font-bold">
+              Chat starts once the secure channel is ready. Messages travel peer-to-peer and are not stored on the
+              server.
+            </p>
+          )}
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className={
+                message.direction === "sent"
+                  ? "ml-auto max-w-[85%] border-4 border-ink bg-acid p-3 font-bold"
+                  : "mr-auto max-w-[85%] border-4 border-ink bg-white p-3 font-bold"
+              }
+            >
+              <p>{message.body}</p>
+              <p className="mt-1 text-xs uppercase">
+                {message.direction} - {new Date(message.sentAt).toLocaleTimeString()}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-2 border-t-4 border-ink bg-white p-3 sm:grid-cols-[1fr_auto]">
+          <input
+            className="min-h-12 border-4 border-ink bg-paper px-3 font-bold"
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onSend();
+            }}
+            placeholder={channelReady ? "Type a private message" : "Waiting for secure channel"}
+            aria-label="Chat message"
+            disabled={!channelReady}
+          />
+          <button className="secondary-action bg-violet text-white" onClick={onSend} disabled={!channelReady}>
+            <Send aria-hidden /> Send
           </button>
         </div>
       </div>
